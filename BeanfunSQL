@@ -1,0 +1,107 @@
+--Bigquery 新聞流量
+create table 
+analysis.bf_planet_news_ctr_summary_dly( newsid string,title string,author string,provider string,url string,planet string,catgory string,views_count INT64,imp_count INT64,date INT64,publish_time INT64,end_time int64)
+
+as 
+(
+with cte_impression as(
+SELECT 
+     JSON_EXTRACT_SCALAR(JSON_EXTRACT_ARRAY(impression_info)[SAFE_OFFSET(0)], '$.uuid') AS newsid,
+     COUNT(DISTINCT openid) as imp_count,
+     DATE  
+FROM event.event_daily 
+
+where event is not null
+and property = "beanfun"
+and (event ="home_page_impression" and JSON_EXTRACT_SCALAR(JSON_EXTRACT_ARRAY(impression_info)[SAFE_OFFSET(0)], "$.sec") = "pop"
+or  (event ="planet_home_page_impression" and  json_extract_SCALAR(json_extract_array(impression_info)[SAFE_OFFSET(0)], "$.sec") ="時事")
+    
+)
+and DATE between CAST(FORMAT_DATE("%Y%m%d", current_date()-14) AS INT64) and   CAST(FORMAT_DATE("%Y%m%d", current_date()-1) AS INT64)
+group by newsid,date
+),
+
+cte_pageview as (
+SELECT 
+     
+     JSON_EXTRACT_SCALAR(page_info, '$.uuid') AS uuid,
+     COUNT(DISTINCT openid) as views_count,
+     date         
+FROM event.event_daily 
+where event is not null
+and property = "beanfun"
+and event ="planet_content_page_view"
+and  DATE between CAST(FORMAT_DATE("%Y%m%d", current_date()-14) AS INT64) and   CAST(FORMAT_DATE("%Y%m%d", current_date()-1) AS INT64)
+group by uuid,date
+)
+
+
+select 
+content_id as newsid,
+title,
+author,
+site_name as provider ,
+url,
+json_extract_string_array(cat0)[SAFE_OFFSET(0)]  as planet,
+json_extract_string_array(cat1)[SAFE_OFFSET(0)] as catgory,
+views_count,
+imp_count ,
+t2.date,
+CAST(FORMAT_DATE("%Y%m%d", DATE(TIMESTAMP_MILLIS(CAST(publish_time AS int64)), "Asia/Taipei")) AS INT64)  as publish_time,
+CAST(FORMAT_DATE("%Y%m%d", DATE(TIMESTAMP_MILLIS(CAST(end_time AS int64)), "Asia/Taipei")) AS INT64)  as end_time
+FROM `bf-data-prod-001.content.beanfun_planet_news`t1
+left join cte_impression t2
+on t1.content_id=t2.newsid 
+left join  cte_pageview t3
+on t1.content_id=t3.uuid  AND T2.DATE=T3.DATE
+)
+ ;
+ 
+ --新聞用戶INFO
+ 
+ create table 
+analysis.bf_planet_news_user_summary_dly(PROVIDER string,gender string,age INT64,imp_count INT64,views_count int64)
+
+as 
+(
+with cte_impression as(
+SELECT 
+     openid,
+     json_extract_SCALAR(json_extract_array(impression_info)[SAFE_OFFSET(0)], "$.provider") as PROVIDER,
+    --   JSON_EXTRACT_SCALAR(JSON_EXTRACT_ARRAY(impression_info)[SAFE_OFFSET(0)], '$.uuid') AS newsid,    
+     DATE  
+FROM event.event_daily 
+
+where event is not null
+and property = "beanfun"
+and (event ="home_page_impression" and JSON_EXTRACT_SCALAR(JSON_EXTRACT_ARRAY(impression_info)[SAFE_OFFSET(0)], "$.sec") = "pop"
+or  (event ="planet_home_page_impression" and  json_extract_SCALAR(json_extract_array(impression_info)[SAFE_OFFSET(0)], "$.sec") ="時事")
+)
+and DATE between CAST(FORMAT_DATE("%Y%m%d", current_date()-14) AS INT64) and   CAST(FORMAT_DATE("%Y%m%d", current_date()-1) AS INT64)
+
+),
+
+cte_pageview as (
+SELECT 
+     openid,
+    --  JSON_EXTRACT_SCALAR(page_info, '$.uuid') AS uuid,    
+     date         
+FROM event.event_daily 
+where event is not null
+and property = "beanfun"
+and event ="planet_content_page_view"
+and  DATE between CAST(FORMAT_DATE("%Y%m%d", current_date()-14) AS INT64) and   CAST(FORMAT_DATE("%Y%m%d", current_date()-1) AS INT64)
+)
+
+
+select t1.PROVIDER,t3.gender,t3.age, COUNT (DISTINCT t1.openid) AS imp_count, COUNT ( DISTINCT t2.openid) AS views_count
+FROM cte_impression t1
+left join cte_pageview t2
+on t1.openid=t2.openid 
+left join  `bf-data-prod-001.utils.beanfun_member_list_with_gender_age` t3
+on t1.openid=t3.open_id  
+GROUP BY PROVIDER,GENDER,AGE
+order by PROVIDER,GENDER,AGE
+-- 
+)
+ ;
