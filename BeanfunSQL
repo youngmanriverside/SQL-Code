@@ -105,3 +105,16 @@ order by PROVIDER,GENDER,AGE
 -- 
 )
  ;
+
+--Big querry
+--EX1 星球事件
+
+SELECT DISTINCT openid FROMbf-data-prod-001.event.event_dailyWHERE event LIKE "planet%" AND date BETWEEN 20210823 AND 20210927 AND ( JSON_EXTRACT_SCALAR(page_info, "$.tab") = “時事星” OR JSON_EXTRACT_STRING_ARRAY(JSON_EXTRACT(page_info, "$.cat0"))[OFFSET(0)] = "時事星" OR JSON_EXTRACT_SCALAR(click_info, "$.cat0") = "時事星” )
+--註：SCALAR 取雙引號裡的值
+
+--EX3排程 在where對時間做條件
+CREATE TABLE analysis.test2 (date DATE, openid string) PARTITION BY date OPTIONS( partition_expiration_days=180, /*資料6個月移除*/ require_partition_filter=false ) AS SELECT date, openid FROM bf-data-prod-001.event.event_daily WHERE PARSE_DATE("%Y%m%d", CAST(date AS string)) = CURRENT_DATE()-1 LIMIT 10
+
+--EX4排程 DATE 變成int格式 bigquery
+
+CAST(FORMAT_DATE("%Y%m%d", current_date()-7) AS INT64)
